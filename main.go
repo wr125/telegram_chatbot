@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/wr125/telegram_chatbot/routes"
 	"log"
 	"net/http"
 	"os"
@@ -10,7 +11,6 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext/handlers"
 	"github.com/joho/godotenv"
-	"github.com/wr125/telegram_chatbot/routes"
 )
 
 // This bot shows how to use this library to server a webapp.
@@ -26,57 +26,60 @@ func main() {
 	envErr := godotenv.Load(".env")
 
 	if envErr != nil {
-		fmt.Printf("Could not load .env file")
+		panic("Error loading .env file")
+	}
 
-		// Get token from the environment variable
-		token := os.Getenv("TOKEN")
-		if token == "" {
-			panic("TOKEN environment variable is empty")
-		}
+	// Get token from the environment variable
+	token := os.Getenv("TOKEN")
+	if token == "" {
+		panic("TOKEN environment variable is empty")
+	}
 
-		// This MUST be an HTTPS URL for telegram to accept it.
-		webappURL := os.Getenv("URL")
-		if webappURL == "" {
-			panic("URL environment variable is empty")
-		}
+	// This MUST be an HTTPS URL for telegram to accept it.
+	webappURL := os.Getenv("URL")
+	if webappURL == "" {
+		panic("URL environment variable is empty")
+	}
 
-		// Create our bot.
-		b, err := gotgbot.NewBot(token, &gotgbot.BotOpts{
-			Client: http.Client{},
-			DefaultRequestOpts: &gotgbot.RequestOpts{
-				Timeout: gotgbot.DefaultTimeout,
-				APIURL:  gotgbot.DefaultAPIURL,
+	// Create our bot.
+	b, err := gotgbot.NewBot(token, &gotgbot.BotOpts{
+		Client: http.Client{},
+		DefaultRequestOpts: &gotgbot.RequestOpts{
+			Timeout: gotgbot.DefaultTimeout,
+			APIURL:  gotgbot.DefaultAPIURL,
+		},
+	})
+	if err != nil {
+		panic("failed to create new bot: " + err.Error())
+	}
+
+	// Create updater and dispatcher to handle updates in a simple manner.
+	updater := ext.NewUpdater(&ext.UpdaterOpts{
+		Dispatcher: ext.NewDispatcher(&ext.DispatcherOpts{
+			// If an error is returned by a handler, log it and continue going.
+			Error: func(b *gotgbot.Bot, ctx *ext.Context, err error) ext.DispatcherAction {
+				log.Println("an error occurred while handling update:", err.Error())
+				return ext.DispatcherActionNoop
 			},
-		})
-		if err != nil {
-			panic("failed to create new bot: " + err.Error())
-		}
+			MaxRoutines: ext.DefaultMaxRoutines,
+		}),
+	})
+	dispatcher := updater.Dispatcher
 
-		// Create updater and dispatcher to handle updates in a simple manner.
-		updater := ext.NewUpdater(&ext.UpdaterOpts{
-			Dispatcher: ext.NewDispatcher(&ext.DispatcherOpts{
-				// If an error is returned by a handler, log it and continue going.
-				Error: func(b *gotgbot.Bot, ctx *ext.Context, err error) ext.DispatcherAction {
-					log.Println("an error occurred while handling update:", err.Error())
-					return ext.DispatcherActionNoop
-				},
-				MaxRoutines: ext.DefaultMaxRoutines,
-			}),
-		})
-		dispatcher := updater.Dispatcher
+	// /start command to introduce the bot and send the URL
+	dispatcher.AddHandler(handlers.NewCommand("start", func(b *gotgbot.Bot, ctx *ext.Context) error {
+		return start(b, ctx, webappURL)
+	}))
 
-		// /start command to introduce the bot and send the URL
-		dispatcher.AddHandler(handlers.NewCommand("start", func(b *gotgbot.Bot, ctx *ext.Context) error {
-			return start(b, ctx, webappURL)
-		}))
+	// Start receiving (and handling) updates.
+	err = updater.StartPolling(b, &ext.PollingOpts{DropPendingUpdates: true})
 
-		// Start receiving (and handling) updates.
-		err = updater.StartPolling(b, &ext.PollingOpts{DropPendingUpdates: true})
-		if err != nil {
-			panic("failed to start polling: " + err.Error())
-		}
-		log.Printf("%s has been started...\n", b.User.Username)
+	if err != nil {
+		panic("failed to start polling: " + err.Error())
+	}
+	log.Printf("%s has been started...\n", b.User.Username)
 
+	go func() {
 		// Setup new HTTP server mux to handle different paths.
 		mux := http.NewServeMux()
 		// This serves the home page.
@@ -93,7 +96,9 @@ func main() {
 		if err := server.ListenAndServe(); err != nil {
 			panic("failed to listen and serve: " + err.Error())
 		}
-	}
+	}()
+
+	updater.Idle()
 }
 
 // start introduces the bot.
