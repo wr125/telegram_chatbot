@@ -1,10 +1,3 @@
-/*
-look up the location of the .env file in the same directory.
-envErr := godotenv.Load(".env")
-
-	if envErr != nil {
-		fmt.Printf("Could not load .env file")
-*/
 package main
 
 import (
@@ -92,7 +85,7 @@ func main() {
 		mux.HandleFunc("/validate", routes.Validate(token))
 		server := http.Server{
 			Handler: mux,
-			Addr:    "0.0.0.0:80",
+			Addr:    "0.0.0.0:8080",
 		}
 
 		// Start the webserver displaying the page.
